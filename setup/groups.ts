@@ -4,7 +4,7 @@
  * Other channels discover group names at runtime — this step auto-skips for them.
  * Replaces 05-sync-groups.sh + 05b-list-groups.sh
  */
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -181,18 +181,27 @@ sock.ev.on('connection.update', async (update) => {
 
     const tmpScript = path.join(projectRoot, '.tmp-group-sync.mjs');
     fs.writeFileSync(tmpScript, syncScript, 'utf-8');
+    let output = '';
     try {
-      const output = execSync(`node ${tmpScript}`, {
+      output = execFileSync('node', [tmpScript], {
         cwd: projectRoot,
         encoding: 'utf-8',
         timeout: 45000,
         stdio: ['ignore', 'pipe', 'pipe'],
       });
-      syncOk = output.includes('SYNCED:');
-      logger.info({ output: output.trim() }, 'Sync output');
+    } catch (err: any) {
+      // The sync script exits non-zero when WhatsApp closes the connection after
+      // sock.end() triggers a second connection.update event. Extract stdout from
+      // the error object to still detect a successful sync.
+      output = err?.stdout ?? '';
+      if (!output.includes('SYNCED:')) {
+        logger.error({ err }, 'Sync failed');
+      }
     } finally {
       try { fs.unlinkSync(tmpScript); } catch { /* ignore cleanup errors */ }
     }
+    syncOk = output.includes('SYNCED:');
+    if (syncOk) logger.info({ output: output.trim() }, 'Sync output');
   } catch (err) {
     logger.error({ err }, 'Sync failed');
   }
