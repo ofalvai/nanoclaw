@@ -118,9 +118,13 @@ Available groups are provided in `/workspace/ipc/available_groups.json`:
 }
 ```
 
-Groups are ordered by most recent activity. The list is synced from WhatsApp daily.
+Groups are ordered by most recent activity. The list includes both WhatsApp and Telegram chats that have sent at least one message.
 
-If a group the user mentions isn't in the list, request a fresh sync:
+**JID formats by channel:**
+- WhatsApp groups: `120363336345536173@g.us`
+- Telegram chats: `tg:-1001234567890` (negative number for groups/channels)
+
+If a WhatsApp group the user mentions isn't in the list, request a fresh sync:
 
 ```bash
 echo '{"type": "refresh_groups"}' > /workspace/ipc/tasks/refresh_$(date +%s).json
@@ -128,13 +132,15 @@ echo '{"type": "refresh_groups"}' > /workspace/ipc/tasks/refresh_$(date +%s).jso
 
 Then wait a moment and re-read `available_groups.json`.
 
+For **Telegram groups**: the bot has a `/chatid` command. Ask the user to send `/chatid` in the Telegram group — the bot will reply with the JID (e.g. `tg:-1001234567890`). Use that JID to register the group directly.
+
 **Fallback**: Query the SQLite database directly:
 
 ```bash
 sqlite3 /workspace/project/store/messages.db "
   SELECT jid, name, last_message_time
   FROM chats
-  WHERE jid LIKE '%@g.us' AND jid != '__group_sync__'
+  WHERE (jid LIKE '%@g.us' OR jid LIKE 'tg:%') AND jid != '__group_sync__'
   ORDER BY last_message_time DESC
   LIMIT 10;
 "
@@ -147,8 +153,14 @@ Groups are registered in the SQLite `registered_groups` table:
 ```json
 {
   "1234567890-1234567890@g.us": {
-    "name": "Family Chat",
+    "name": "Family Chat (WhatsApp)",
     "folder": "whatsapp_family-chat",
+    "trigger": "@Andy",
+    "added_at": "2024-01-31T12:00:00.000Z"
+  },
+  "tg:-1001234567890": {
+    "name": "Family Chat (Telegram)",
+    "folder": "telegram_family",
     "trigger": "@Andy",
     "added_at": "2024-01-31T12:00:00.000Z"
   }
@@ -159,7 +171,7 @@ Fields:
 - **Key**: The chat JID (unique identifier — WhatsApp, Telegram, Slack, Discord, etc.)
 - **name**: Display name for the group
 - **folder**: Channel-prefixed folder name under `groups/` for this group's files and memory
-- **trigger**: The trigger word (usually same as global, but could differ)
+- **trigger**: The trigger word for this group (e.g. `@Andy`). Each group can have its own trigger
 - **requiresTrigger**: Whether `@trigger` prefix is needed (default: `true`). Set to `false` for solo/personal chats where all messages should be processed
 - **isMain**: Whether this is the main control group (elevated privileges, no trigger required)
 - **added_at**: ISO timestamp when registered
@@ -168,7 +180,7 @@ Fields:
 
 - **Main group** (`isMain: true`): No trigger needed — all messages are processed automatically
 - **Groups with `requiresTrigger: false`**: No trigger needed — all messages processed (use for 1-on-1 or solo chats)
-- **Other groups** (default): Messages must start with `@AssistantName` to be processed
+- **Other groups** (default): Messages must start with the group's configured `trigger` word to be processed
 
 ### Adding a Group
 
