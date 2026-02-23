@@ -1,6 +1,10 @@
 # NanoClaw Agent Container
 # Runs Claude Agent SDK in isolated Linux VM with browser automation
 
+# Build gogcli binary
+FROM golang:1.25-alpine AS gogcli-builder
+RUN go install github.com/steipete/gogcli/cmd/gog@latest
+
 FROM node:22-slim
 
 # Install system dependencies for Chromium
@@ -25,6 +29,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     git \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=gogcli-builder /go/bin/gog /usr/local/bin/gog
 
 # Set Chromium path for agent-browser
 ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
