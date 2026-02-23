@@ -199,6 +199,16 @@ function buildVolumeMounts(
     readonly: false,
   });
 
+  // Mount gogcli OAuth credentials (only if initialized)
+  const gogcliDir = path.join(DATA_DIR, 'gogcli');
+  if (fs.existsSync(gogcliDir)) {
+    mounts.push({
+      hostPath: gogcliDir,
+      containerPath: '/home/node/.config/gogcli',
+      readonly: false, // Token refresh requires write access
+    });
+  }
+
   // Additional mounts validated against external allowlist (tamper-proof from containers)
   if (group.containerConfig?.additionalMounts) {
     const validatedMounts = validateAdditionalMounts(
@@ -233,6 +243,14 @@ function buildContainerArgs(
 
   // Pass host timezone so container's local time matches the user's
   args.push('-e', `TZ=${TIMEZONE}`);
+
+  // gogcli uses a file-based keyring encrypted with this password.
+  // Must be a real -e env var (not a secret) because gog is invoked via Bash,
+  // and secrets are intentionally scoped to the Claude SDK only.
+  const gogEnv = readEnvFile(['GOG_KEYRING_PASSWORD']);
+  if (gogEnv.GOG_KEYRING_PASSWORD) {
+    args.push('-e', `GOG_KEYRING_PASSWORD=${gogEnv.GOG_KEYRING_PASSWORD}`);
+  }
 
   // Run as host user so bind-mounted files are accessible.
   // Skip when running as root (uid 0), as the container's node user (uid 1000),
