@@ -260,6 +260,11 @@ function buildContainerArgs(
     args.push('-e', `TODOIST_API_TOKEN=${todoistEnv.TODOIST_API_TOKEN}`);
   }
 
+  const githubEnv = readEnvFile(['GH_TOKEN']);
+  if (githubEnv.GH_TOKEN) {
+    args.push('-e', `GH_TOKEN=${githubEnv.GH_TOKEN}`);
+  }
+
   // Run as host user so bind-mounted files are accessible.
   // Skip when running as root (uid 0), as the container's node user (uid 1000),
   // or when getuid is unavailable (native Windows without WSL).
