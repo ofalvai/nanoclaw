@@ -33,6 +33,7 @@ import {
   ensureContainerRuntimeRunning,
 } from './container-runtime.js';
 import {
+  deleteSession,
   getAllChats,
   getAllRegisteredGroups,
   getAllSessions,
@@ -50,9 +51,11 @@ import {
   storeMessage,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
-import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
+import { startSchedulerLoop } from './task-scheduler.js';
+import { Channel, NewMessage, RegisteredGroup } from './types.js';
+import { logger } from './logger.js';
 import {
   restoreRemoteControl,
   startRemoteControl,
@@ -64,9 +67,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
-import { startSchedulerLoop } from './task-scheduler.js';
-import { Channel, NewMessage, RegisteredGroup } from './types.js';
-import { logger } from './logger.js';
+import { archiveSession } from './session-archiver.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -238,6 +239,27 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
     );
     if (!hasTrigger) return true;
+  }
+
+  const isClearCommand = missedMessages.some(
+    (m) =>
+      m.content.trim().toLowerCase() === 'clear' ||
+      m.content.trim().toLowerCase() === '/clear',
+  );
+  if (isClearCommand) {
+    lastAgentTimestamp[chatJid] =
+      missedMessages[missedMessages.length - 1].timestamp;
+    saveState();
+    const sessionToArchive = sessions[group.folder];
+    if (sessionToArchive) archiveSession(group.folder, sessionToArchive);
+    delete sessions[group.folder];
+    deleteSession(group.folder);
+    logger.info({ group: group.name }, 'Context cleared by user command');
+    await channel.sendMessage(
+      chatJid,
+      'Context cleared. Starting fresh on the next message.',
+    );
+    return true;
   }
 
   const prompt = formatMessages(missedMessages, TIMEZONE);
@@ -494,6 +516,32 @@ async function startMessageLoop(): Promise<void> {
           );
           const messagesToSend =
             allPending.length > 0 ? allPending : groupMessages;
+
+          const isClear = messagesToSend.some((m) => {
+            const t = m.content.trim().toLowerCase();
+            return t === 'clear' || t === '/clear';
+          });
+          if (isClear) {
+            lastAgentTimestamp[chatJid] =
+              messagesToSend[messagesToSend.length - 1].timestamp;
+            saveState();
+            const sessionToArchive = sessions[group.folder];
+            if (sessionToArchive)
+              archiveSession(group.folder, sessionToArchive);
+            delete sessions[group.folder];
+            deleteSession(group.folder);
+            queue.closeStdin(chatJid);
+            logger.info(
+              { group: group.name },
+              'Context cleared by user command',
+            );
+            await channel.sendMessage(
+              chatJid,
+              'Context cleared. Starting fresh on the next message.',
+            );
+            continue;
+          }
+
           const formatted = formatMessages(messagesToSend, TIMEZONE);
 
           if (queue.sendMessage(chatJid, formatted)) {
