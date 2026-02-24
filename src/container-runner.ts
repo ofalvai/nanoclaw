@@ -252,6 +252,11 @@ function buildContainerArgs(
     args.push('-e', `GOG_KEYRING_PASSWORD=${gogEnv.GOG_KEYRING_PASSWORD}`);
   }
 
+  const todoistEnv = readEnvFile(['TODOIST_API_TOKEN']);
+  if (todoistEnv.TODOIST_API_TOKEN) {
+    args.push('-e', `TODOIST_API_TOKEN=${todoistEnv.TODOIST_API_TOKEN}`);
+  }
+
   // Run as host user so bind-mounted files are accessible.
   // Skip when running as root (uid 0), as the container's node user (uid 1000),
   // or when getuid is unavailable (native Windows without WSL).
