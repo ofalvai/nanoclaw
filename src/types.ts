@@ -30,6 +30,7 @@ export interface AllowedRoot {
 export interface ContainerConfig {
   additionalMounts?: AdditionalMount[];
   timeout?: number; // Default: 300000 (5 minutes)
+  skills?: string[]; // Allowlist of skill names (directory names under container/skills/). Omit to allow all skills.
 }
 
 export interface RegisteredGroup {
