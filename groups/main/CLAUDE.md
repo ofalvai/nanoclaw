@@ -174,6 +174,26 @@ Folder naming convention — channel prefix with underscore separator:
 - Slack "Engineering" → `slack_engineering`
 - Use lowercase, hyphens for the group name part
 
+#### Limiting Skills for a Group
+
+By default all skills are available. To restrict a group to specific skills, add a `skills` allowlist to `containerConfig`. Skill names are the directory names under `container/skills/` (e.g. `weather`, `perplexity-research`, `agent-browser`, `gogcli`, `todoist`):
+
+```json
+{
+  "tg:-1001234567890": {
+    "name": "Family Chat",
+    "folder": "family",
+    "trigger": "@Claw",
+    "added_at": "...",
+    "containerConfig": {
+      "skills": ["weather", "perplexity-research"]
+    }
+  }
+}
+```
+
+Omitting `skills` (or setting it to `null`) restores the default — all skills available.
+
 #### Adding Additional Directories for a Group
 
 Groups can have extra directories mounted. Add `containerConfig` to their entry:
