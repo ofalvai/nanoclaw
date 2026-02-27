@@ -6,8 +6,6 @@ import {
   DATA_DIR,
   IDLE_TIMEOUT,
   POLL_INTERVAL,
-  TELEGRAM_BOT_TOKEN,
-  TELEGRAM_ONLY,
   TIMEZONE,
   TRIGGER_PATTERN,
 } from './config.js';
@@ -16,6 +14,7 @@ import {
   getChannelFactory,
   getRegisteredChannelNames,
 } from './channels/registry.js';
+import { TelegramChannel } from './channels/telegram.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -66,6 +65,7 @@ let registeredGroups: Record<string, RegisteredGroup> = {};
 let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
+let telegram: TelegramChannel | undefined;
 const channels: Channel[] = [];
 const queue = new GroupQueue();
 
@@ -103,6 +103,16 @@ function registerGroup(jid: string, group: RegisteredGroup): void {
     { jid, name: group.name, folder: group.folder },
     'Group registered',
   );
+
+  // Sync Telegram slash commands so the newly registered chat sees the right command list
+  telegram
+    ?.syncAllGroupCommands()
+    .catch((err) =>
+      logger.warn(
+        { err },
+        'Failed to sync Telegram commands after group registration',
+      ),
+    );
 }
 
 /**
@@ -556,6 +566,9 @@ async function main(): Promise<void> {
     logger.fatal('No channels connected');
     process.exit(1);
   }
+  telegram = channels.find(
+    (ch): ch is TelegramChannel => ch instanceof TelegramChannel,
+  );
 
   // Start subsystems (independently of connection handler)
   startSchedulerLoop({
