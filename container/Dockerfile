@@ -38,7 +38,7 @@ ENV AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 
 # Install agent-browser and claude-code globally
-RUN npm install -g agent-browser @anthropic-ai/claude-code @doist/todoist-cli
+RUN npm install -g agent-browser @anthropic-ai/claude-code @doist/todoist-cli agentlogs
 
 # Other tools and utilities
 RUN apt-get update && apt-get install -y jq sqlite3

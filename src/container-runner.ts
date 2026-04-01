@@ -34,6 +34,22 @@ const onecli = new OneCLI({ url: ONECLI_URL });
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
+function readAgentlogsConfig(): { token: string; serverUrl: string } | null {
+  const env = readEnvFile(['AGENTLOGS_AUTH_TOKEN', 'AGENTLOGS_SERVER_URL']);
+  if (!env.AGENTLOGS_AUTH_TOKEN) return null;
+  return {
+    token: env.AGENTLOGS_AUTH_TOKEN,
+    serverUrl: env.AGENTLOGS_SERVER_URL || 'http://localhost:3000',
+  };
+}
+
+// Replace localhost/127.0.0.1 with the container host gateway so hooks can reach the host.
+function resolveContainerUrl(url: string): string {
+  return url
+    .replace(/\blocalhost\b/g, CONTAINER_HOST_GATEWAY)
+    .replace(/\b127\.0\.0\.1\b/g, CONTAINER_HOST_GATEWAY);
+}
+
 export interface ContainerInput {
   prompt: string;
   sessionId?: string;
@@ -134,6 +150,7 @@ function buildVolumeMounts(
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
+
   if (!fs.existsSync(settingsFile)) {
     fs.writeFileSync(
       settingsFile,
@@ -156,6 +173,34 @@ function buildVolumeMounts(
       ) + '\n',
     );
   }
+
+  // Sync agentlogs hooks on every start so toggling AGENTLOGS_AUTH_TOKEN takes effect immediately.
+  const agentlogsConfig = readAgentlogsConfig();
+  const currentSettings = JSON.parse(fs.readFileSync(settingsFile, 'utf-8'));
+  const hookCmd = `bash -c 'if [ -n "$AGENTLOGS_CLI_PATH" ]; then exec $AGENTLOGS_CLI_PATH claudecode hook; else exec npx -y agentlogs@latest claudecode hook; fi'`;
+  if (agentlogsConfig) {
+    currentSettings.hooks = {
+      PreToolUse: [
+        { matcher: 'Bash', hooks: [{ type: 'command', command: hookCmd }] },
+      ],
+      PostToolUse: [
+        {
+          matcher: 'Bash',
+          hooks: [{ type: 'command', command: hookCmd, async: true }],
+        },
+      ],
+      Stop: [{ hooks: [{ type: 'command', command: hookCmd, async: true }] }],
+      SessionEnd: [
+        { hooks: [{ type: 'command', command: hookCmd, async: true }] },
+      ],
+    };
+  } else {
+    delete currentSettings.hooks;
+  }
+  fs.writeFileSync(
+    settingsFile,
+    JSON.stringify(currentSettings, null, 2) + '\n',
+  );
 
   // Sync skills from container/skills/ into each group's .claude/skills/
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
@@ -302,6 +347,17 @@ async function buildContainerArgs(
   const githubEnv = readEnvFile(['GH_TOKEN']);
   if (githubEnv.GH_TOKEN) {
     args.push('-e', `GH_TOKEN=${githubEnv.GH_TOKEN}`);
+  }
+
+  const agentlogs = readAgentlogsConfig();
+  if (agentlogs) {
+    args.push('-e', `AGENTLOGS_AUTH_TOKEN=${agentlogs.token}`);
+    args.push(
+      '-e',
+      `AGENTLOGS_SERVER_URL=${resolveContainerUrl(agentlogs.serverUrl)}`,
+    );
+    // Point to the pre-installed binary to avoid npx download on each hook invocation
+    args.push('-e', 'AGENTLOGS_CLI_PATH=/usr/local/bin/agentlogs');
   }
 
   // Run as host user so bind-mounted files are accessible.
