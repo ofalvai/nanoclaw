@@ -708,6 +708,7 @@ async function main(): Promise<void> {
       isGroup?: boolean,
     ) => storeChatMetadata(chatJid, timestamp, name, channel, isGroup),
     registeredGroups: () => registeredGroups,
+    registerGroup,
   };
 
   // Create and connect all registered channels.
@@ -733,6 +734,16 @@ async function main(): Promise<void> {
   telegram = channels.find(
     (ch): ch is TelegramChannel => ch instanceof TelegramChannel,
   );
+
+  // Wire up sibling channels so webhook can forward agent responses to another channel
+  for (const ch of channels) {
+    if (
+      'setSiblingChannels' in ch &&
+      typeof (ch as any).setSiblingChannels === 'function'
+    ) {
+      (ch as any).setSiblingChannels(channels);
+    }
+  }
 
   // Start subsystems (independently of connection handler)
   startSchedulerLoop({
