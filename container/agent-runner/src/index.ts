@@ -471,6 +471,8 @@ async function runQuery(
         'mcp__nanoclaw__*',
       ],
       env: sdkEnv,
+      thinking: { type: 'adaptive'},
+      effort: 'medium',
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       settingSources: ['project', 'user'],
